@@ -453,6 +453,169 @@ export function mockApiPlugin(): Plugin {
           return send([])
         }
 
+        // GitHub OAuth endpoints
+        if (url === '/api/auth/github/status') {
+          const clientId = process.env.GITHUB_CLIENT_ID || process.env.VITE_GITHUB_CLIENT_ID || null
+          return send({
+            configured: Boolean(clientId),
+            clientId: clientId ? `${clientId.slice(0, 4)}...${clientId.slice(-4)}` : null,
+            appUrl: process.env.APP_URL || 'https://ais-dev-z7rs6rqf5uez542o3rr3yk-61332230797.asia-southeast1.run.app',
+            sharedUrl: 'https://ais-pre-z7rs6rqf5uez542o3rr3yk-61332230797.asia-southeast1.run.app',
+          })
+        }
+
+        if (url === '/api/auth/github/url') {
+          const clientId = process.env.GITHUB_CLIENT_ID || process.env.VITE_GITHUB_CLIENT_ID || 'Ov23liDEMO123'
+          const appUrl = process.env.APP_URL || 'https://ais-dev-z7rs6rqf5uez542o3rr3yk-61332230797.asia-southeast1.run.app'
+          const redirectUri = `${appUrl}/api/auth/github/callback`
+          const scope = 'repo,read:user'
+          const state = Math.random().toString(36).slice(2)
+          const authUrl = `https://github.com/login/oauth/authorize?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scope)}&state=${encodeURIComponent(state)}`
+          return send({ url: authUrl, redirectUri, clientId })
+        }
+
+        if (url === '/api/auth/github/callback') {
+          const code = fullUrl.match(/code=([^&]+)/)?.[1]
+          const clientId = process.env.GITHUB_CLIENT_ID || process.env.VITE_GITHUB_CLIENT_ID
+          const clientSecret = process.env.GITHUB_CLIENT_SECRET
+          let token = ''
+          let user: any = null
+
+          if (code && clientId && clientSecret) {
+            try {
+              const tokenRes = await fetch('https://github.com/login/oauth/access_token', {
+                method: 'POST',
+                headers: {
+                  Accept: 'application/json',
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  client_id: clientId,
+                  client_secret: clientSecret,
+                  code: decodeURIComponent(code),
+                }),
+              })
+              const tokenData = (await tokenRes.json()) as any
+              if (tokenData?.access_token) {
+                token = tokenData.access_token
+                const userRes = await fetch('https://api.github.com/user', {
+                  headers: {
+                    Authorization: `Bearer ${token}`,
+                    Accept: 'application/vnd.github.v3+json',
+                    'User-Agent': 'FreeLLMAPI-Router',
+                  },
+                })
+                if (userRes.ok) {
+                  user = (await userRes.json()) as any
+                }
+              }
+            } catch (err) {
+              console.error('[OAuth] Token exchange error:', err)
+            }
+          }
+
+          if (!token) {
+            token = `gho_mock_${Math.random().toString(36).slice(2, 12)}`
+            user = {
+              login: 'github-user',
+              name: 'Authenticated GitHub User',
+              avatar_url: 'https://avatars.githubusercontent.com/u/9919?v=4',
+              html_url: 'https://github.com',
+            }
+          }
+
+          res.writeHead(200, { 'Content-Type': 'text/html' })
+          res.end(`<!DOCTYPE html>
+<html>
+  <head>
+    <title>GitHub Authentication Successful</title>
+    <style>
+      body { font-family: system-ui, -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #090d16; color: #fff; text-align: center; }
+      .card { padding: 32px; border-radius: 16px; background: #131b2e; border: 1px solid #1e293b; max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+      h2 { margin-top: 0; color: #38bdf8; }
+      p { color: #94a3b8; font-size: 14px; }
+      .spinner { width: 32px; height: 32px; border: 3px solid rgba(56,189,248,0.2); border-top-color: #38bdf8; border-radius: 50%; animation: spin 1s linear infinite; margin: 16px auto; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="spinner"></div>
+      <h2>GitHub Authenticated!</h2>
+      <p>Sending credentials back to Playground and closing window...</p>
+    </div>
+    <script>
+      try {
+        if (window.opener) {
+          window.opener.postMessage({
+            type: 'GITHUB_OAUTH_SUCCESS',
+            token: ${JSON.stringify(token)},
+            user: ${JSON.stringify(user)}
+          }, '*');
+          setTimeout(function() { window.close(); }, 700);
+        } else {
+          window.location.href = '/';
+        }
+      } catch(e) {
+        console.error('postMessage error:', e);
+      }
+    </script>
+  </body>
+</html>`)
+          return
+        }
+
+        if (url === '/api/auth/github/user') {
+          const authHeader = (req.headers['authorization'] as string) || ''
+          const token = authHeader.replace(/^Bearer\s+/i, '').trim()
+          if (!token) return send({ error: 'Unauthorized' }, 401)
+
+          try {
+            const ghRes = await fetch('https://api.github.com/user', {
+              headers: {
+                Authorization: `Bearer ${token}`,
+                Accept: 'application/vnd.github.v3+json',
+                'User-Agent': 'FreeLLMAPI-Router',
+              },
+            })
+            if (ghRes.ok) {
+              const data = await ghRes.json()
+              return send(data)
+            }
+          } catch {
+            // fallback
+          }
+          return send({
+            login: 'developer',
+            name: 'GitHub Developer',
+            avatar_url: 'https://avatars.githubusercontent.com/u/9919?v=4',
+            html_url: 'https://github.com',
+          })
+        }
+
+        if (url === '/api/auth/github/user/repos') {
+          const authHeader = (req.headers['authorization'] as string) || ''
+          const token = authHeader.replace(/^Bearer\s+/i, '').trim()
+          if (!token) return send({ error: 'Unauthorized' }, 401)
+
+          try {
+            const ghRes = await fetch('https://api.github.com/user/repos?sort=updated&per_page=50&affiliation=owner,collaborator', {
+              headers: {
+                Authorization: `Bearer ${token}`,
+                Accept: 'application/vnd.github.v3+json',
+                'User-Agent': 'FreeLLMAPI-Router',
+              },
+            })
+            if (ghRes.ok) {
+              const data = await ghRes.json()
+              return send(data)
+            }
+          } catch {
+            // fallback
+          }
+          return send([])
+        }
+
         // GitHub import endpoints
         if (url === '/api/github/repo') {
           const owner = fullUrl.match(/owner=([^&]+)/)?.[1]

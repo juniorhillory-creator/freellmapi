@@ -1,9 +1,11 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import {
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
   Code2,
+  Copy,
   ExternalLink,
   FileCode,
   FileText,
@@ -14,6 +16,8 @@ import {
   GitFork,
   KeyRound,
   Loader2,
+  Lock,
+  LogOut,
   RefreshCw,
   Search,
   Star,
@@ -43,7 +47,29 @@ import {
   type GitHubRepoInfo,
   type TreeNode,
 } from '@/lib/github-import'
+import {
+  fetchAuthenticatedUser,
+  fetchUserRepositories,
+  getGitHubOAuthUrl,
+  getOAuthStatus,
+  openGitHubOAuthPopup,
+  type GitHubOAuthStatus,
+  type GitHubUser,
+  type GitHubUserRepo,
+} from '@/lib/github-oauth'
 import type { Attachment } from '@/lib/attachments'
+
+function GitHubIcon({ className = 'size-4' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"
+      />
+    </svg>
+  )
+}
 
 export interface ImportGithubProjectProps {
   open: boolean
@@ -121,6 +147,148 @@ export function ImportGithubProject({
   const handleTokenChange = (val: string) => {
     setToken(val)
     localStorage.setItem('playground.githubToken', val)
+    if (!val.trim()) {
+      setCurrentUser(null)
+      setUserRepos([])
+      setShowUserRepos(false)
+      localStorage.removeItem('playground.githubUser')
+    } else {
+      fetchAuthenticatedUser(val).then(u => {
+        if (u) {
+          setCurrentUser(u)
+          localStorage.setItem('playground.githubUser', JSON.stringify(u))
+        }
+      })
+    }
+  }
+
+  // GitHub OAuth States
+  const [currentUser, setCurrentUser] = useState<GitHubUser | null>(() => {
+    try {
+      const saved = localStorage.getItem('playground.githubUser')
+      return saved ? JSON.parse(saved) : null
+    } catch {
+      return null
+    }
+  })
+  const [isAuthenticating, setIsAuthenticating] = useState(false)
+  const [userRepos, setUserRepos] = useState<GitHubUserRepo[]>([])
+  const [loadingUserRepos, setLoadingUserRepos] = useState(false)
+  const [showUserRepos, setShowUserRepos] = useState(false)
+  const [userReposFilter, setUserReposFilter] = useState<'all' | 'private' | 'public'>('all')
+  const [userReposSearch, setUserReposSearch] = useState('')
+  const [oauthStatus, setOauthStatus] = useState<GitHubOAuthStatus | null>(null)
+  const [copiedUrl, setCopiedUrl] = useState<string | null>(null)
+
+  // Fetch OAuth status & user details on modal open or when token is updated
+  useEffect(() => {
+    if (open) {
+      getOAuthStatus().then(setOauthStatus)
+      if (token && !currentUser) {
+        fetchAuthenticatedUser(token).then(u => {
+          if (u) {
+            setCurrentUser(u)
+            localStorage.setItem('playground.githubUser', JSON.stringify(u))
+          }
+        })
+      }
+    }
+  }, [open, token, currentUser])
+
+  // Fetch user repositories when authenticated
+  const handleLoadUserRepos = useCallback(async () => {
+    if (!token) return
+    setLoadingUserRepos(true)
+    try {
+      const repos = await fetchUserRepositories(token)
+      setUserRepos(repos)
+      setShowUserRepos(true)
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to fetch repositories.')
+    } finally {
+      setLoadingUserRepos(false)
+    }
+  }, [token])
+
+  // Initiate GitHub OAuth Popup Flow
+  const handleConnectOAuth = async () => {
+    setIsAuthenticating(true)
+    try {
+      const authUrl = await getGitHubOAuthUrl()
+      openGitHubOAuthPopup(
+        authUrl,
+        async (newToken, user) => {
+          setIsAuthenticating(false)
+          setToken(newToken)
+          localStorage.setItem('playground.githubToken', newToken)
+
+          if (user) {
+            setCurrentUser(user)
+            localStorage.setItem('playground.githubUser', JSON.stringify(user))
+            toast.success(`Connected to GitHub as @${user.login}!`)
+          } else {
+            const fetched = await fetchAuthenticatedUser(newToken)
+            if (fetched) {
+              setCurrentUser(fetched)
+              localStorage.setItem('playground.githubUser', JSON.stringify(fetched))
+              toast.success(`Connected to GitHub as @${fetched.login}!`)
+            } else {
+              toast.success('GitHub OAuth connection established!')
+            }
+          }
+
+          // Fetch user's repos automatically
+          const repos = await fetchUserRepositories(newToken)
+          setUserRepos(repos)
+          setShowUserRepos(true)
+        },
+        error => {
+          setIsAuthenticating(false)
+          toast.error(error.message)
+        },
+      )
+    } catch (err: any) {
+      setIsAuthenticating(false)
+      toast.error(err.message || 'Could not initiate GitHub OAuth.')
+    }
+  }
+
+  // Disconnect GitHub OAuth
+  const handleDisconnectOAuth = () => {
+    setToken('')
+    setCurrentUser(null)
+    setUserRepos([])
+    setShowUserRepos(false)
+    localStorage.removeItem('playground.githubToken')
+    localStorage.removeItem('playground.githubUser')
+    toast.info('Disconnected from GitHub')
+  }
+
+  const handleCopyCallbackUrl = (urlToCopy: string) => {
+    navigator.clipboard.writeText(urlToCopy)
+    setCopiedUrl(urlToCopy)
+    toast.success('Callback URL copied to clipboard!')
+    setTimeout(() => setCopiedUrl(null), 2500)
+  }
+
+  // Filtered User Repositories
+  const filteredUserRepos = useMemo(() => {
+    const q = userReposSearch.trim().toLowerCase()
+    return userRepos.filter(r => {
+      if (userReposFilter === 'private' && !r.private) return false
+      if (userReposFilter === 'public' && r.private) return false
+      if (q && !r.full_name.toLowerCase().includes(q) && !(r.description || '').toLowerCase().includes(q)) {
+        return false
+      }
+      return true
+    })
+  }, [userRepos, userReposFilter, userReposSearch])
+
+  const handleSelectUserRepo = (repo: GitHubUserRepo) => {
+    setRepoUrl(repo.full_name)
+    setBranch(repo.default_branch)
+    setShowUserRepos(false)
+    handleFetchProjectStructure(repo.full_name, false)
   }
 
   // Fetch Project Structure from GitHub with Local Caching
@@ -615,7 +783,7 @@ export function ImportGithubProject({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPopup maxWidth="max-w-4xl" className="p-0 overflow-hidden flex flex-col max-h-[88vh]">
         {/* Modal Header */}
-        <div className="flex items-center justify-between border-b px-6 py-4 bg-muted/20">
+        <div className="flex items-center justify-between border-b px-6 py-3.5 bg-muted/20">
           <div className="flex items-center gap-3">
             <div className="flex size-9 items-center justify-center rounded-xl bg-foreground text-background">
               <FolderGit2 className="size-5" />
@@ -629,9 +797,74 @@ export function ImportGithubProject({
               </p>
             </div>
           </div>
-          <DialogClose className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
-            <X className="size-4" />
-          </DialogClose>
+
+          <div className="flex items-center gap-2">
+            {currentUser ? (
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-muted/60 border text-xs">
+                  <img
+                    src={currentUser.avatar_url}
+                    alt={currentUser.login}
+                    className="size-4 rounded-full"
+                  />
+                  <span className="font-medium text-foreground text-[11px]">@{currentUser.login}</span>
+                  <span className="inline-block size-1.5 rounded-full bg-emerald-500" title="OAuth Authenticated" />
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="xs"
+                  onClick={() => {
+                    if (userRepos.length === 0) {
+                      handleLoadUserRepos()
+                    } else {
+                      setShowUserRepos(prev => !prev)
+                    }
+                  }}
+                  className="h-7 gap-1 text-[11px]"
+                >
+                  <Lock className="size-3 text-amber-500" />
+                  <span>My Repos</span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  onClick={handleDisconnectOAuth}
+                  className="h-7 px-1.5 text-muted-foreground hover:text-destructive"
+                  title="Disconnect GitHub account"
+                >
+                  <LogOut className="size-3.5" />
+                </Button>
+              </div>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleConnectOAuth}
+                disabled={isAuthenticating}
+                className="gap-1.5 h-8 text-xs font-medium border-border/80 hover:bg-muted"
+                title="Authenticate with GitHub to import private repositories"
+              >
+                {isAuthenticating ? (
+                  <>
+                    <Loader2 className="size-3.5 animate-spin" />
+                    <span>Connecting…</span>
+                  </>
+                ) : (
+                  <>
+                    <GitHubIcon className="size-3.5" />
+                    <span>Connect GitHub</span>
+                  </>
+                )}
+              </Button>
+            )}
+
+            <DialogClose className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors ml-1">
+              <X className="size-4" />
+            </DialogClose>
+          </div>
         </div>
 
         {/* Modal Body */}
@@ -720,32 +953,289 @@ export function ImportGithubProject({
                 )}
               </div>
 
-              {/* Token toggle */}
-              <button
-                type="button"
-                onClick={() => setShowTokenSettings(prev => !prev)}
-                className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors ml-auto"
-              >
-                <KeyRound className="size-3" />
-                <span>Access Token</span>
-                {showTokenSettings ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
-              </button>
+              {/* OAuth & Token toggle */}
+              <div className="flex items-center gap-2 ml-auto">
+                {!currentUser && (
+                  <button
+                    type="button"
+                    onClick={handleConnectOAuth}
+                    disabled={isAuthenticating}
+                    className="flex items-center gap-1 text-xs text-primary hover:underline font-medium"
+                  >
+                    <Lock className="size-3" />
+                    <span>OAuth for Private Repos</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowTokenSettings(prev => !prev)}
+                  className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <KeyRound className="size-3" />
+                  <span>Auth & Token</span>
+                  {showTokenSettings ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+                </button>
+              </div>
             </div>
 
-            {/* Access token input */}
-            {showTokenSettings && (
-              <div className="p-3 rounded-xl border bg-muted/20 space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium">GitHub Personal Access Token (PAT)</span>
-                  <span className="text-[11px] text-muted-foreground">Optional · for private repos</span>
+            {/* User Repositories Drawer / Picker */}
+            {currentUser && showUserRepos && (
+              <div className="rounded-xl border bg-muted/20 p-3 space-y-2.5 animate-in fade-in-50 duration-150">
+                <div className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-1.5 font-medium text-foreground">
+                    <GitHubIcon className="size-3.5" />
+                    <span>Your GitHub Repositories ({userRepos.length})</span>
+                    <span className="text-[11px] text-muted-foreground font-normal">
+                      · Click any repository to import
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="xs"
+                      onClick={handleLoadUserRepos}
+                      disabled={loadingUserRepos}
+                      className="h-6 px-1.5 text-[11px]"
+                      title="Reload repositories"
+                    >
+                      <RefreshCw className={`size-3 ${loadingUserRepos ? 'animate-spin' : ''}`} />
+                    </Button>
+                    <button
+                      type="button"
+                      onClick={() => setShowUserRepos(false)}
+                      className="text-muted-foreground hover:text-foreground p-0.5"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  </div>
                 </div>
-                <Input
-                  type="password"
-                  value={token}
-                  onChange={e => handleTokenChange(e.target.value)}
-                  placeholder="ghp_... or github_pat_..."
-                  className="h-8 text-xs font-mono"
-                />
+
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3 text-muted-foreground" />
+                    <Input
+                      value={userReposSearch}
+                      onChange={e => setUserReposSearch(e.target.value)}
+                      placeholder="Search your repositories…"
+                      className="h-7 pl-7 text-xs bg-background"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1 bg-muted/60 p-0.5 rounded-lg text-[11px]">
+                    {(['all', 'private', 'public'] as const).map(tab => (
+                      <button
+                        key={tab}
+                        type="button"
+                        onClick={() => setUserReposFilter(tab)}
+                        className={`px-2 py-0.5 rounded capitalize transition-colors ${
+                          userReposFilter === tab ? 'bg-background shadow-2xs font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        {tab === 'private' ? 'Private' : tab === 'public' ? 'Public' : 'All'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {loadingUserRepos ? (
+                  <div className="py-6 flex items-center justify-center gap-2 text-xs text-muted-foreground">
+                    <Loader2 className="size-4 animate-spin text-primary" />
+                    <span>Loading repositories from GitHub…</span>
+                  </div>
+                ) : filteredUserRepos.length === 0 ? (
+                  <div className="py-6 text-center text-xs text-muted-foreground">
+                    {userRepos.length === 0
+                      ? 'No repositories found for this account.'
+                      : 'No repositories matching search query.'}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-48 overflow-y-auto pr-1">
+                    {filteredUserRepos.map(repo => (
+                      <button
+                        key={repo.id}
+                        type="button"
+                        onClick={() => handleSelectUserRepo(repo)}
+                        className="flex items-start justify-between gap-2 p-2 rounded-lg border bg-background hover:bg-muted/60 text-left transition-colors group"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono text-xs font-medium text-foreground truncate group-hover:text-primary">
+                              {repo.name}
+                            </span>
+                            {repo.private ? (
+                              <Badge variant="outline" className="text-[9px] px-1 py-0 h-3.5 border-amber-500/40 text-amber-600 dark:text-amber-400 gap-0.5">
+                                <Lock className="size-2.5" />
+                                Private
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-[9px] px-1 py-0 h-3.5 text-muted-foreground">
+                                Public
+                              </Badge>
+                            )}
+                          </div>
+                          {repo.description && (
+                            <p className="text-[10px] text-muted-foreground line-clamp-1 mt-0.5">
+                              {repo.description}
+                            </p>
+                          )}
+                        </div>
+                        {repo.stargazers_count > 0 && (
+                          <div className="flex items-center gap-0.5 text-[10px] text-muted-foreground shrink-0 tabular-nums">
+                            <Star className="size-3 text-amber-500" />
+                            <span>{repo.stargazers_count}</span>
+                          </div>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Authentication & Token settings panel */}
+            {showTokenSettings && (
+              <div className="p-3.5 rounded-xl border bg-muted/20 space-y-3 animate-in fade-in-50 duration-150">
+                {/* OAuth status section */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <GitHubIcon className="size-4" />
+                      <span className="text-xs font-semibold text-foreground">GitHub OAuth Integration</span>
+                      {currentUser ? (
+                        <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-500/30 bg-emerald-500/10">
+                          Connected
+                        </Badge>
+                      ) : oauthStatus?.configured ? (
+                        <Badge variant="outline" className="text-[10px] text-primary border-primary/30 bg-primary/5">
+                          Ready to Connect
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                          Not Connected
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      Enables secure access to private and organizational repositories without manual tokens.
+                    </p>
+                  </div>
+
+                  <div>
+                    {currentUser ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="xs"
+                        onClick={handleDisconnectOAuth}
+                        className="gap-1 text-xs text-destructive hover:text-destructive"
+                      >
+                        <LogOut className="size-3" />
+                        Disconnect
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        size="xs"
+                        onClick={handleConnectOAuth}
+                        disabled={isAuthenticating}
+                        className="gap-1.5 text-xs font-medium"
+                      >
+                        {isAuthenticating ? (
+                          <>
+                            <Loader2 className="size-3 animate-spin" />
+                            Connecting…
+                          </>
+                        ) : (
+                          <>
+                            <GitHubIcon className="size-3" />
+                            Connect with GitHub
+                          </>
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                {/* OAuth Callback URLs for GitHub App configuration */}
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-foreground text-[11px]">OAuth App Callback URLs:</span>
+                    <a
+                      href="https://github.com/settings/developers"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[10px] text-primary hover:underline flex items-center gap-1"
+                    >
+                      <span>GitHub Developer Settings</span>
+                      <ExternalLink className="size-2.5" />
+                    </a>
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 p-1.5 rounded-md bg-background border text-[11px] font-mono">
+                      <span className="text-muted-foreground text-[10px] font-sans shrink-0">Dev:</span>
+                      <span className="truncate flex-1">
+                        https://ais-dev-z7rs6rqf5uez542o3rr3yk-61332230797.asia-southeast1.run.app/api/auth/github/callback
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleCopyCallbackUrl(
+                            'https://ais-dev-z7rs6rqf5uez542o3rr3yk-61332230797.asia-southeast1.run.app/api/auth/github/callback',
+                          )
+                        }
+                        className="text-muted-foreground hover:text-foreground shrink-0 p-0.5"
+                        title="Copy Development Callback URL"
+                      >
+                        {copiedUrl ===
+                        'https://ais-dev-z7rs6rqf5uez542o3rr3yk-61332230797.asia-southeast1.run.app/api/auth/github/callback' ? (
+                          <Check className="size-3 text-emerald-500" />
+                        ) : (
+                          <Copy className="size-3" />
+                        )}
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-2 p-1.5 rounded-md bg-background border text-[11px] font-mono">
+                      <span className="text-muted-foreground text-[10px] font-sans shrink-0">Shared:</span>
+                      <span className="truncate flex-1">
+                        https://ais-pre-z7rs6rqf5uez542o3rr3yk-61332230797.asia-southeast1.run.app/api/auth/github/callback
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleCopyCallbackUrl(
+                            'https://ais-pre-z7rs6rqf5uez542o3rr3yk-61332230797.asia-southeast1.run.app/api/auth/github/callback',
+                          )
+                        }
+                        className="text-muted-foreground hover:text-foreground shrink-0 p-0.5"
+                        title="Copy Shared Callback URL"
+                      >
+                        {copiedUrl ===
+                        'https://ais-pre-z7rs6rqf5uez542o3rr3yk-61332230797.asia-southeast1.run.app/api/auth/github/callback' ? (
+                          <Check className="size-3 text-emerald-500" />
+                        ) : (
+                          <Copy className="size-3" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Personal Access Token alternative */}
+                <div className="space-y-1.5 pt-2 border-t">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-foreground">Or Use Personal Access Token (PAT)</span>
+                    <span className="text-[10px] text-muted-foreground">Scope required: repo, read:user</span>
+                  </div>
+                  <Input
+                    type="password"
+                    value={token}
+                    onChange={e => handleTokenChange(e.target.value)}
+                    placeholder="ghp_... or github_pat_..."
+                    className="h-8 text-xs font-mono bg-background"
+                  />
+                </div>
               </div>
             )}
 
