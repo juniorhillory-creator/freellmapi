@@ -1,6 +1,6 @@
 import { useEffect, useState, type ClipboardEvent, type KeyboardEvent, type RefObject } from 'react'
 import { Liquid } from 'liquid-gooey'
-import { ArrowUp, Paperclip } from 'lucide-react'
+import { ArrowUp, FolderGit2, Paperclip } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { DictationButton, type DictationPhase } from './dictation-button'
 import { DictationWave } from './dictation-wave'
@@ -41,13 +41,14 @@ export interface LiquidComposerProps {
   loading: boolean
   onSend: () => void
   onAttach: () => void
+  onGithubImport?: () => void
   labels: { attach: string; send: string; sending: string }
   /** Speech to text for the mic; the transcript is appended to `value`. */
   dictation: { available: boolean; model: string; apiKey: string | null | undefined; onText: (text: string) => void }
 }
 
 export function LiquidComposer({
-  inputRef, value, onChange, onKeyDown, onPaste, placeholder, hasContent, loading, onSend, onAttach, labels, dictation,
+  inputRef, value, onChange, onKeyDown, onPaste, placeholder, hasContent, loading, onSend, onAttach, onGithubImport, labels, dictation,
 }: LiquidComposerProps) {
   // Set from input events; an empty value never counts as grown, so a
   // programmatic clear (send, new chat) drops back to one line by itself.
@@ -96,6 +97,19 @@ export function LiquidComposer({
           >
             <Paperclip className="size-4" />
           </Button>
+          {onGithubImport && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="shrink-0 rounded-full text-muted-foreground hover:text-foreground"
+              onClick={onGithubImport}
+              disabled={loading}
+              aria-label="Import project from GitHub"
+              title="Import project from GitHub"
+            >
+              <FolderGit2 className="size-4" />
+            </Button>
+          )}
           {/* While the mic is open the field shows the voice, not the text:
               the textarea keeps its value and size, the wave paints over it. */}
           {/* A flex wrapper: an inline textarea inside a block div gets a

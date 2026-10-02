@@ -1,0 +1,7 @@
+{
+  "name": "FreeLLMAPI",
+  "description": "Unified LLM router and management platform with automated fallback, quota monitoring, and model intelligence scoring.",
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

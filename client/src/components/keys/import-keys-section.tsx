@@ -63,7 +63,7 @@ export function ImportKeysSection({ onImported }: { onImported?: () => void } = 
           isDuplicate: key.isDuplicate ?? false,
         }
       }))
-      setSkipped(data.skipped)
+      setSkipped(data.skipped ?? [])
     },
   })
 

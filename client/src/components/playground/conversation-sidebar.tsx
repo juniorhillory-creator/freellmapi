@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronsLeft, ChevronsRight, MoreHorizontal, Pencil, SquarePen, Trash2 } from 'lucide-react'
+import { ChevronsLeft, ChevronsRight, FolderGit2, MoreHorizontal, Pencil, SquarePen, Trash2 } from 'lucide-react'
 import { Button, buttonVariants } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -36,6 +36,7 @@ export function ConversationSidebar({
   open,
   onToggle,
   onNew,
+  onGithubImport,
   onSelect,
   onRename,
   onDelete,
@@ -45,6 +46,7 @@ export function ConversationSidebar({
   open: boolean
   onToggle: () => void
   onNew: () => void
+  onGithubImport?: () => void
   onSelect: (id: number) => void
   onRename: (id: number, title: string) => void
   onDelete: (id: number) => void
@@ -111,6 +113,17 @@ export function ConversationSidebar({
         >
           <SquarePen className="size-4" />
         </Button>
+        {onGithubImport && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onGithubImport}
+            aria-label="Import from GitHub"
+            title="Import from GitHub"
+          >
+            <FolderGit2 className="size-4" />
+          </Button>
+        )}
       </div>
 
       <div
@@ -140,6 +153,17 @@ export function ConversationSidebar({
             <SquarePen className="size-4" />
             <span className="truncate">{t('playgroundSessions.newChat')}</span>
           </Button>
+          {onGithubImport && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full justify-center gap-2 text-muted-foreground hover:text-foreground"
+              onClick={onGithubImport}
+            >
+              <FolderGit2 className="size-4" />
+              <span className="truncate">Import from GitHub</span>
+            </Button>
+          )}
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
