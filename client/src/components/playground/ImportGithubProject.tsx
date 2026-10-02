@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   CheckCircle2,
   ChevronDown,
@@ -18,12 +18,20 @@ import {
   Search,
   Star,
   X,
+  Zap,
 } from 'lucide-react'
 import { Dialog, DialogClose, DialogPopup, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { toast } from '@/lib/toast'
+import {
+  formatCacheAge,
+  getCachedProjectStructure,
+  invalidateRepoCache,
+  listCachedProjects,
+  setCachedProjectStructure,
+} from '@/lib/github-cache'
 import {
   buildFileTree,
   fetchGitHubFileContent,
@@ -93,6 +101,17 @@ export function ImportGithubProject({
   const [previewFile, setPreviewFile] = useState<{ path: string; content: string } | null>(null)
   const [loadingPreview, setLoadingPreview] = useState(false)
 
+  // Caching layer state
+  const [cacheStatus, setCacheStatus] = useState<{ isCached: boolean; age?: string; timestamp?: number } | null>(null)
+  const [cachedProjectsList, setCachedProjectsList] = useState(() => listCachedProjects())
+
+  // Refresh cached projects list whenever modal opens
+  useEffect(() => {
+    if (open) {
+      setCachedProjectsList(listCachedProjects())
+    }
+  }, [open])
+
   // Real-time URL validation state
   const validationResult = useMemo(() => {
     if (!repoUrl.trim()) return null
@@ -104,8 +123,8 @@ export function ImportGithubProject({
     localStorage.setItem('playground.githubToken', val)
   }
 
-  // Fetch Project Structure from GitHub
-  const handleFetchProjectStructure = async (targetUrl?: string) => {
+  // Fetch Project Structure from GitHub with Local Caching
+  const handleFetchProjectStructure = async (targetUrl?: string, bypassCache = false) => {
     const input = (targetUrl ?? repoUrl).trim()
     const validation = validateGitHubRepoUrl(input)
     if (!validation.valid || !validation.parsed) {
@@ -113,21 +132,66 @@ export function ImportGithubProject({
       return
     }
 
+    const { owner, repo, branch: parsedBranch } = validation.parsed
+    const targetBranch = parsedBranch || branch.trim() || 'main'
+
+    // Check local caching layer first (prevents redundant network calls)
+    if (!bypassCache) {
+      const cached = getCachedProjectStructure(owner, repo, targetBranch)
+      if (cached) {
+        setBranch(cached.branch)
+        setRepoInfo(cached.repo)
+        setFiles(cached.files)
+        setCacheStatus({
+          isCached: true,
+          age: formatCacheAge(cached.timestamp),
+          timestamp: cached.timestamp,
+        })
+        const defaultSelected = new Set<string>()
+        const initialExpanded = new Set<string>()
+
+        for (const f of cached.files) {
+          if (!f.isBinary && f.isImportant) {
+            defaultSelected.add(f.path)
+            const segments = f.path.split('/')
+            for (let i = 1; i < segments.length; i++) {
+              initialExpanded.add(segments.slice(0, i).join('/'))
+            }
+          }
+        }
+
+        setSelectedPaths(defaultSelected)
+        setExpandedFolders(initialExpanded)
+        setPreviewFile(null)
+        toast.success(`Loaded from local cache (${formatCacheAge(cached.timestamp)})`)
+        return
+      }
+    }
+
     setFetching(true)
     setRepoInfo(null)
     setFiles([])
     setSelectedPaths(new Set())
     setPreviewFile(null)
+    setCacheStatus(null)
 
     try {
-      const { owner, repo, branch: parsedBranch } = validation.parsed
       const info = await fetchGitHubRepoInfo(owner, repo, token)
-      const targetBranch = parsedBranch || branch.trim() || info.defaultBranch
-      setBranch(targetBranch)
+      const resolvedBranch = parsedBranch || branch.trim() || info.defaultBranch
+      setBranch(resolvedBranch)
       setRepoInfo(info)
 
-      const tree = await fetchGitHubTree(owner, repo, targetBranch, token)
+      const tree = await fetchGitHubTree(owner, repo, resolvedBranch, token)
       setFiles(tree)
+
+      // Store fetched structure in local cache
+      setCachedProjectStructure(owner, repo, resolvedBranch, { repo: info, files: tree })
+      setCacheStatus({
+        isCached: true,
+        age: 'just now',
+        timestamp: Date.now(),
+      })
+      setCachedProjectsList(listCachedProjects())
 
       // Auto-select key architectural and config files
       const defaultSelected = new Set<string>()
@@ -146,13 +210,24 @@ export function ImportGithubProject({
 
       setSelectedPaths(defaultSelected)
       setExpandedFolders(initialExpanded)
-      toast.success(`Successfully fetched project structure for ${info.fullName} (${tree.length} files)`)
+      toast.success(
+        bypassCache
+          ? `Refreshed structure for ${info.fullName} (${tree.length} files)`
+          : `Fetched structure for ${info.fullName} (${tree.length} files)`,
+      )
     } catch (err: any) {
       console.error('[ImportGithubProject] Fetch error:', err)
       toast.error(err.message || 'Failed to fetch repository structure.')
     } finally {
       setFetching(false)
     }
+  }
+
+  const handleForceRefresh = () => {
+    if (repoInfo) {
+      invalidateRepoCache(repoInfo.owner, repoInfo.name, branch)
+    }
+    handleFetchProjectStructure(repoUrl, true)
   }
 
   // Build Hierarchical Tree Structure
@@ -561,6 +636,51 @@ export function ImportGithubProject({
               </div>
             )}
 
+            {/* Recently Synced (Local Cache) list */}
+            {cachedProjectsList.length > 0 && !repoInfo && (
+              <div className="rounded-xl border bg-muted/20 p-3 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-1.5 font-medium text-foreground/90">
+                    <Zap className="size-3.5 text-amber-500" />
+                    Recently Synced Repositories (instant cache):
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      cachedProjectsList.forEach(p => {
+                        const [owner, rest] = p.key.split('/')
+                        const repo = rest.split('@')[0]
+                        invalidateRepoCache(owner, repo)
+                      })
+                      setCachedProjectsList([])
+                      toast.success('Cleared local GitHub cache')
+                    }}
+                    className="text-[11px] text-muted-foreground hover:text-foreground hover:underline"
+                  >
+                    Clear cache
+                  </button>
+                </div>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {cachedProjectsList.map(item => (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => {
+                        setRepoUrl(item.fullName)
+                        setBranch(item.branch)
+                        handleFetchProjectStructure(item.fullName, false)
+                      }}
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-background hover:bg-muted text-xs transition-colors border shadow-2xs group"
+                    >
+                      <FolderGit2 className="size-3 text-primary group-hover:scale-105 transition-transform" />
+                      <span className="font-mono text-[11px] text-foreground font-medium">{item.fullName}</span>
+                      <span className="text-[10px] text-muted-foreground font-sans">({item.age})</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Quick sample chips */}
             {!repoInfo && (
               <div className="flex items-center gap-1.5 flex-wrap text-xs text-muted-foreground pt-1">
@@ -612,6 +732,24 @@ export function ImportGithubProject({
                 </div>
 
                 <div className="flex items-center gap-3 text-xs text-muted-foreground shrink-0 tabular-nums">
+                  {cacheStatus?.isCached && (
+                    <span className="flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                      <Zap className="size-3" />
+                      Cached {cacheStatus.age}
+                    </span>
+                  )}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="xs"
+                    onClick={handleForceRefresh}
+                    disabled={fetching}
+                    className="h-6 gap-1 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+                    title="Bypass cache and re-fetch from GitHub"
+                  >
+                    <RefreshCw className={`size-3 ${fetching ? 'animate-spin' : ''}`} />
+                    <span>Refresh</span>
+                  </Button>
                   <span className="flex items-center gap-1">
                     <Star className="size-3.5 text-amber-500" />
                     {repoInfo.stars.toLocaleString()}

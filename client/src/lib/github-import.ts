@@ -2,6 +2,11 @@
 // Supports fetching public and private repositories, file trees, file previews,
 // and preparing project context for LLM conversations.
 
+import {
+  getCachedFileContent,
+  setCachedFileContent,
+} from './github-cache'
+
 export interface GitHubRepoInfo {
   owner: string
   name: string
@@ -314,7 +319,16 @@ export async function fetchGitHubFileContent(
   branch: string,
   filePath: string,
   token?: string,
+  bypassCache = false,
 ): Promise<string> {
+  // Check local file cache first unless bypassing
+  if (!bypassCache) {
+    const cached = getCachedFileContent(owner, repo, branch, filePath)
+    if (cached !== null) {
+      return cached
+    }
+  }
+
   const headers: Record<string, string> = {}
   if (token?.trim()) {
     headers.Authorization = `Bearer ${token.trim()}`
@@ -327,7 +341,9 @@ export async function fetchGitHubFileContent(
       { headers },
     )
     if (rawRes.ok) {
-      return await rawRes.text()
+      const text = await rawRes.text()
+      setCachedFileContent(owner, repo, branch, filePath, text)
+      return text
     }
   } catch {
     // ignore and fallback
@@ -349,6 +365,7 @@ export async function fetchGitHubFileContent(
       const data = await apiRes.json()
       if (data.content && data.encoding === 'base64') {
         const decoded = atob(data.content.replace(/\n/g, ''))
+        setCachedFileContent(owner, repo, branch, filePath, decoded)
         return decoded
       }
     }
@@ -363,7 +380,9 @@ export async function fetchGitHubFileContent(
   )
   if (proxyRes.ok) {
     const data = await proxyRes.json()
-    return data.content ?? ''
+    const content = data.content ?? ''
+    setCachedFileContent(owner, repo, branch, filePath, content)
+    return content
   }
 
   throw new Error(`Failed to load content for ${filePath}`)
