@@ -1,0 +1,31 @@
+﻿{
+  "$schema": "https://app.kilo.ai/config.json",
+  "instructions": [
+    "INSTRUCTIONS.md",
+    "CODING_STANDARDS.md"
+  ],
+  "permission": {
+    "read": {
+      "*": "allow",
+      "*.env*": "deny",
+      "*.pem": "deny",
+      "*.key": "deny",
+      ".git/*": "deny"
+    },
+    "edit": {
+      "*": "allow",
+      "*.env*": "deny",
+      "kilo.jsonc": "deny",
+      "INSTRUCTIONS.md": "deny",
+      "CODING_STANDARDS.md": "deny",
+      ".git/*": "deny"
+    },
+    "bash": {
+      "*": "ask",
+      "git status": "allow",
+      "git diff *": "allow",
+      "npm test *": "allow"
+    },
+    "webfetch": "ask"
+  }
+}
