@@ -37,6 +37,7 @@ export function ConversationSidebar({
   onToggle,
   onNew,
   onGithubImport,
+  onSyncGithub,
   onSelect,
   onRename,
   onDelete,
@@ -47,6 +48,7 @@ export function ConversationSidebar({
   onToggle: () => void
   onNew: () => void
   onGithubImport?: () => void
+  onSyncGithub?: () => void
   onSelect: (id: number) => void
   onRename: (id: number, title: string) => void
   onDelete: (id: number) => void
@@ -60,6 +62,8 @@ export function ConversationSidebar({
   // Re-render once a minute so "2m ago" doesn't quietly go stale while a long
   // answer streams.
   const [, setTick] = useState(0)
+
+  const handleSyncAction = onSyncGithub ?? onGithubImport
 
   useEffect(() => {
     const timer = window.setInterval(() => setTick(n => n + 1), 60_000)
@@ -113,13 +117,13 @@ export function ConversationSidebar({
         >
           <SquarePen className="size-4" />
         </Button>
-        {onGithubImport && (
+        {handleSyncAction && (
           <Button
             variant="ghost"
             size="icon-sm"
-            onClick={onGithubImport}
-            aria-label="Import from GitHub"
-            title="Import from GitHub"
+            onClick={handleSyncAction}
+            aria-label="Sync from GitHub"
+            title="Sync from GitHub"
           >
             <FolderGit2 className="size-4" />
           </Button>
@@ -153,15 +157,15 @@ export function ConversationSidebar({
             <SquarePen className="size-4" />
             <span className="truncate">{t('playgroundSessions.newChat')}</span>
           </Button>
-          {onGithubImport && (
+          {handleSyncAction && (
             <Button
               variant="ghost"
               size="sm"
               className="w-full justify-center gap-2 text-muted-foreground hover:text-foreground"
-              onClick={onGithubImport}
+              onClick={handleSyncAction}
             >
               <FolderGit2 className="size-4" />
-              <span className="truncate">Import from GitHub</span>
+              <span className="truncate">Sync from GitHub</span>
             </Button>
           )}
         </div>

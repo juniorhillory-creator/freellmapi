@@ -92,6 +92,101 @@ export function parseGitHubUrl(input: string): ParsedGitHubUrl | null {
   }
 }
 
+export function validateGitHubRepoUrl(input: string): {
+  valid: boolean
+  error?: string
+  parsed?: ParsedGitHubUrl
+} {
+  const trimmed = input.trim()
+  if (!trimmed) {
+    return { valid: false, error: 'Repository URL cannot be empty' }
+  }
+
+  const parsed = parseGitHubUrl(trimmed)
+  if (!parsed) {
+    return {
+      valid: false,
+      error: 'Please enter a valid GitHub URL (e.g. https://github.com/owner/repo) or shorthand (owner/repo)',
+    }
+  }
+
+  const validOwnerPattern = /^[a-zA-Z0-9](?:[a-zA-Z0-9._-]*[a-zA-Z0-9])?$/
+  const validRepoPattern = /^[a-zA-Z0-9_.-]+$/
+
+  if (!validOwnerPattern.test(parsed.owner)) {
+    return { valid: false, error: `Invalid GitHub owner or organization name "${parsed.owner}"` }
+  }
+
+  if (!validRepoPattern.test(parsed.repo)) {
+    return { valid: false, error: `Invalid GitHub repository name "${parsed.repo}"` }
+  }
+
+  return { valid: true, parsed }
+}
+
+export interface TreeNode {
+  name: string
+  path: string
+  type: 'folder' | 'file'
+  size?: number
+  extension?: string
+  isImportant?: boolean
+  children?: TreeNode[]
+}
+
+export function buildFileTree(files: GitHubFileItem[]): TreeNode[] {
+  const root: TreeNode = { name: '', path: '', type: 'folder', children: [] }
+
+  for (const file of files) {
+    const parts = file.path.split('/')
+    let current = root
+
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i]
+      const isFile = i === parts.length - 1
+      const currentPath = parts.slice(0, i + 1).join('/')
+
+      if (isFile) {
+        current.children = current.children || []
+        current.children.push({
+          name: part,
+          path: file.path,
+          type: 'file',
+          size: file.size,
+          extension: file.extension,
+          isImportant: file.isImportant,
+        })
+      } else {
+        current.children = current.children || []
+        let folder = current.children.find(c => c.type === 'folder' && c.name === part)
+        if (!folder) {
+          folder = {
+            name: part,
+            path: currentPath,
+            type: 'folder',
+            children: [],
+          }
+          current.children.push(folder)
+        }
+        current = folder
+      }
+    }
+  }
+
+  const sortNodes = (nodes: TreeNode[]) => {
+    nodes.sort((a, b) => {
+      if (a.type !== b.type) return a.type === 'folder' ? -1 : 1
+      return a.name.localeCompare(b.name)
+    })
+    for (const node of nodes) {
+      if (node.children) sortNodes(node.children)
+    }
+  }
+
+  if (root.children) sortNodes(root.children)
+  return root.children || []
+}
+
 export function isBinaryFile(path: string): boolean {
   const dot = path.lastIndexOf('.')
   if (dot === -1) return false

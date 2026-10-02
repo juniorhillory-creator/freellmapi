@@ -8,7 +8,7 @@ import type { Chain } from '@/components/chain-manager'
 import { Markdown } from '@/components/markdown'
 import { ArtifactHostContext } from '@/lib/artifact-host'
 import { ArtifactPanel, ARTIFACT_PANEL_TRANSITION_MS } from '@/components/playground/artifact-panel'
-import { GitHubImportDialog } from '@/components/playground/github-import-dialog'
+import { ImportGithubProject } from '@/components/playground/ImportGithubProject'
 import { ARTIFACT_WIDTH_STORAGE_KEY, clampArtifactWidth, readArtifactWidth } from '@/lib/artifact-panel-size'
 import { extractArtifacts, type Artifact, type ArtifactKind } from '@/lib/artifacts'
 import { CopyButton } from '@/components/copy-button'
@@ -995,7 +995,7 @@ export default function PlaygroundPage() {
         open={sidebarOpen}
         onToggle={toggleSidebar}
         onNew={handleNewConversation}
-        onGithubImport={() => setGithubImportOpen(true)}
+        onSyncGithub={() => setGithubImportOpen(true)}
         onSelect={handleSelectConversation}
         onRename={handleRenameConversation}
         onDelete={handleDeleteConversation}
@@ -1280,7 +1280,7 @@ export default function PlaygroundPage() {
       />
       )}
 
-      <GitHubImportDialog
+      <ImportGithubProject
         open={githubImportOpen}
         onOpenChange={setGithubImportOpen}
         onImportToCurrent={handleImportToCurrent}
