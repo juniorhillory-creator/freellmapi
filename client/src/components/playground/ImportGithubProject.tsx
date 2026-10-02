@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import {
   CheckCircle2,
   ChevronDown,
@@ -230,11 +230,78 @@ export function ImportGithubProject({
     handleFetchProjectStructure(repoUrl, true)
   }
 
-  // Build Hierarchical Tree Structure
-  const treeNodes = useMemo(() => {
+  // Helper to recursively filter tree nodes by search query
+  const filteredTreeNodes = useMemo(() => {
     const textFiles = files.filter(f => !f.isBinary)
-    return buildFileTree(textFiles)
-  }, [files])
+    const rawTree = buildFileTree(textFiles)
+    if (!searchQuery.trim()) return rawTree
+
+    const q = searchQuery.trim().toLowerCase()
+    const filterNodes = (nodes: TreeNode[]): TreeNode[] => {
+      const out: TreeNode[] = []
+      for (const node of nodes) {
+        if (node.type === 'file') {
+          if (node.path.toLowerCase().includes(q) || node.name.toLowerCase().includes(q)) {
+            out.push(node)
+          }
+        } else if (node.type === 'folder' && node.children) {
+          const matchedChildren = filterNodes(node.children)
+          if (matchedChildren.length > 0 || node.name.toLowerCase().includes(q)) {
+            out.push({ ...node, children: matchedChildren })
+          }
+        }
+      }
+      return out
+    }
+    return filterNodes(rawTree)
+  }, [files, searchQuery])
+
+  // Auto-expand folders when searching so matches are immediately visible
+  useEffect(() => {
+    if (searchQuery.trim()) {
+      const matchingFolders = new Set<string>()
+      files.forEach(f => {
+        if (!f.isBinary && f.path.toLowerCase().includes(searchQuery.toLowerCase())) {
+          const parts = f.path.split('/')
+          for (let i = 1; i < parts.length; i++) {
+            matchingFolders.add(parts.slice(0, i).join('/'))
+          }
+        }
+      })
+      setExpandedFolders(prev => new Set([...prev, ...matchingFolders]))
+    }
+  }, [searchQuery, files])
+
+  // Get all descendant non-binary file paths inside a folder path
+  const getFolderFilePaths = useCallback(
+    (folderPath: string): string[] => {
+      const prefix = folderPath + '/'
+      return files
+        .filter(f => !f.isBinary && (f.path === folderPath || f.path.startsWith(prefix)))
+        .map(f => f.path)
+    },
+    [files],
+  )
+
+  // Toggle selection for all files inside a folder
+  const toggleFolderSelection = useCallback(
+    (folderPath: string) => {
+      const targetPaths = getFolderFilePaths(folderPath)
+      if (targetPaths.length === 0) return
+
+      setSelectedPaths(prev => {
+        const next = new Set(prev)
+        const allSelected = targetPaths.every(p => next.has(p))
+        if (allSelected) {
+          targetPaths.forEach(p => next.delete(p))
+        } else {
+          targetPaths.forEach(p => next.add(p))
+        }
+        return next
+      })
+    },
+    [getFolderFilePaths],
+  )
 
   // Filtered Flat List
   const filteredFiles = useMemo(() => {
@@ -292,7 +359,7 @@ export function ImportGithubProject({
         }
       }
     }
-    walk(treeNodes)
+    walk(filteredTreeNodes)
     setExpandedFolders(all)
   }
 
@@ -417,32 +484,78 @@ export function ImportGithubProject({
     }
   }
 
-  // Recursive Tree Node Renderer
+  // Recursive Tree Node Renderer for Collapsible File Tree
   const renderTreeNode = (node: TreeNode, depth = 0) => {
     if (node.type === 'folder') {
       const isExpanded = expandedFolders.has(node.path)
-      const childCount = node.children?.length ?? 0
+      const folderPaths = getFolderFilePaths(node.path)
+      const selectedInFolder = folderPaths.filter(p => selectedPaths.has(p)).length
+      const isAllSelected = folderPaths.length > 0 && selectedInFolder === folderPaths.length
+      const isIndeterminate = selectedInFolder > 0 && selectedInFolder < folderPaths.length
+
       return (
         <div key={node.path} className="select-none">
           <div
-            onClick={() => toggleFolder(node.path)}
-            className="flex items-center gap-1.5 py-1 px-2 rounded-md hover:bg-muted/50 cursor-pointer text-xs transition-colors"
-            style={{ paddingLeft: `${depth * 14 + 8}px` }}
+            className={`flex items-center gap-1.5 py-1 px-2 rounded-md hover:bg-muted/50 text-xs transition-colors group ${
+              selectedInFolder > 0 ? 'bg-primary/5 font-medium' : ''
+            }`}
+            style={{ paddingLeft: `${depth * 14 + 6}px` }}
           >
-            {isExpanded ? (
-              <ChevronDown className="size-3.5 text-muted-foreground shrink-0" />
-            ) : (
-              <ChevronRight className="size-3.5 text-muted-foreground shrink-0" />
-            )}
-            {isExpanded ? (
-              <FolderOpen className="size-4 text-amber-500 shrink-0" />
-            ) : (
-              <Folder className="size-4 text-amber-500 shrink-0" />
-            )}
-            <span className="font-medium text-foreground truncate">{node.name}</span>
-            <span className="text-[10px] text-muted-foreground ml-auto">({childCount})</span>
+            {/* Expand / Collapse Toggle Button */}
+            <button
+              type="button"
+              onClick={e => {
+                e.stopPropagation()
+                toggleFolder(node.path)
+              }}
+              className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground shrink-0 transition-colors"
+              aria-label={isExpanded ? 'Collapse folder' : 'Expand folder'}
+            >
+              {isExpanded ? (
+                <ChevronDown className="size-3.5 text-muted-foreground" />
+              ) : (
+                <ChevronRight className="size-3.5 text-muted-foreground" />
+              )}
+            </button>
+
+            {/* Folder Selection Checkbox for bulk folder selection */}
+            <input
+              type="checkbox"
+              ref={el => {
+                if (el) el.indeterminate = isIndeterminate
+              }}
+              checked={isAllSelected}
+              onChange={() => toggleFolderSelection(node.path)}
+              className="size-3.5 rounded-sm accent-primary cursor-pointer shrink-0"
+              title={isAllSelected ? 'Deselect all files in this directory' : 'Select all files in this directory'}
+            />
+
+            {/* Folder Name & Icon */}
+            <div
+              onClick={() => toggleFolder(node.path)}
+              className="flex items-center gap-1.5 min-w-0 flex-1 cursor-pointer"
+            >
+              {isExpanded ? (
+                <FolderOpen className="size-4 text-amber-500 shrink-0" />
+              ) : (
+                <Folder className="size-4 text-amber-500 shrink-0" />
+              )}
+              <span className="text-foreground truncate">{node.name}</span>
+            </div>
+
+            {/* Folder Counter */}
+            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground ml-auto shrink-0 tabular-nums">
+              {selectedInFolder > 0 ? (
+                <span className="text-primary font-medium">
+                  {selectedInFolder}/{folderPaths.length} selected
+                </span>
+              ) : (
+                <span>({folderPaths.length} files)</span>
+              )}
+            </div>
           </div>
 
+          {/* Collapsible Children */}
           {isExpanded && node.children && (
             <div className="border-l border-border/40 ml-4">
               {node.children.map(child => renderTreeNode(child, depth + 1))}
@@ -459,9 +572,9 @@ export function ImportGithubProject({
         className={`flex items-center justify-between gap-2 py-1 px-2 rounded-md hover:bg-muted/50 text-xs transition-colors ${
           isSelected ? 'bg-primary/5 font-medium' : ''
         }`}
-        style={{ paddingLeft: `${depth * 14 + 8}px` }}
+        style={{ paddingLeft: `${depth * 14 + 22}px` }}
       >
-        <label className="flex items-center gap-2 min-w-0 flex-1 cursor-pointer">
+        <label className="flex items-center gap-2 min-w-0 flex-1 cursor-pointer select-none">
           <input
             type="checkbox"
             checked={isSelected}
@@ -910,13 +1023,13 @@ export function ImportGithubProject({
               {/* Project Structure Tree / List Container */}
               <div className="rounded-2xl border p-2 max-h-[38vh] overflow-y-auto bg-card">
                 {viewMode === 'tree' ? (
-                  treeNodes.length === 0 ? (
+                  filteredTreeNodes.length === 0 ? (
                     <div className="py-8 text-center text-xs text-muted-foreground">
-                      No files found in project.
+                      No files matching filter in project tree.
                     </div>
                   ) : (
                     <div className="space-y-0.5">
-                      {treeNodes.map(node => renderTreeNode(node))}
+                      {filteredTreeNodes.map(node => renderTreeNode(node))}
                     </div>
                   )
                 ) : (
@@ -1098,7 +1211,7 @@ export function ImportGithubProject({
               ) : (
                 <>
                   <FolderGit2 className="size-4" />
-                  Sync to Playground
+                  Load {selectedPaths.size > 0 ? `${selectedPaths.size} Files ` : ''}into Playground
                 </>
               )}
             </Button>
