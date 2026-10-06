@@ -19,7 +19,7 @@ re-pull `:latest`).
 ## Reporting a vulnerability
 
 **Preferred:** GitHub private vulnerability reporting — go to the
-[Security tab](https://github.com/tashfeenahmed/freellmapi/security) and click
+[Security tab](https://github.com/juniorhillory-creator/freellmapi/security) and click
 **Report a vulnerability**. That opens a private thread with the maintainer and
 keeps the details out of public issues.
 
