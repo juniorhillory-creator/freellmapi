@@ -25,7 +25,7 @@ curl -fsSL https://freellmapi.co/install.sh | bash
 
 Prefer to read before you pipe to bash? [The script is here](https://freellmapi.co/install.sh). Re-running it is safe: your `.env` (and encryption key) is preserved and the container updates to `:latest`. Override the defaults with `FREELLMAPI_DIR`, `PORT`, or `HOST_BIND` env vars.
 
-On Windows, the easiest path is the desktop **[`.exe` installer from Releases](https://github.com/tashfeenahmed/freellmapi/releases/latest)** ([below](#desktop-app)); the Docker steps work in WSL or any bash shell.
+On Windows, the easiest path is the desktop **[`.exe` installer from Releases](https://github.com/juniorhillory-creator/freellmapi/releases/latest)** ([below](#desktop-app)); the Docker steps work in WSL or any bash shell.
 
 On Android, see the experimental [Termux installation guide](02-android-termux.md). It uses Node's built-in SQLite driver and does not require the Android NDK.
 
@@ -41,7 +41,7 @@ Runs the API and dashboard together on port 3001 and persists SQLite in a named 
 
 *On macOS / Linux (Bash):*
 ```bash
-git clone https://github.com/tashfeenahmed/freellmapi.git
+git clone https://github.com/juniorhillory-creator/freellmapi.git
 cd freellmapi
 
 # Generate an encryption key for at-rest key storage
@@ -53,7 +53,7 @@ docker compose up -d
 
 *On Windows (PowerShell):*
 ```powershell
-git clone https://github.com/tashfeenahmed/freellmapi.git
+git clone https://github.com/juniorhillory-creator/freellmapi.git
 cd freellmapi
 
 $Bytes = New-Object Byte[] 32
@@ -88,7 +88,7 @@ docker compose up -d
 
 *On macOS / Linux (Bash):*
 ```bash
-git clone https://github.com/tashfeenahmed/freellmapi.git
+git clone https://github.com/juniorhillory-creator/freellmapi.git
 cd freellmapi
 npm install
 ENCRYPTION_KEY="$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')"
@@ -98,7 +98,7 @@ npm run dev
 
 *On Windows (PowerShell):*
 ```powershell
-git clone https://github.com/tashfeenahmed/freellmapi.git
+git clone https://github.com/juniorhillory-creator/freellmapi.git
 cd freellmapi
 npm install
 $ENCRYPTION_KEY = node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
@@ -231,7 +231,7 @@ than one endpoint is rejected rather than applied to an arbitrary one:
 FreeLLMAPI publishes a single production image that contains the Express server and the built React dashboard:
 
 ```bash
-docker pull ghcr.io/tashfeenahmed/freellmapi:latest   # or pin a release, e.g. :v1.2.3
+docker pull ghcr.io/juniorhillory-creator/freellmapi:latest   # or pin a release, e.g. :v1.2.3
 ```
 
 The image is multi-arch (`linux/amd64` + `linux/arm64`, so it runs on a Raspberry Pi). Published tags: `latest` (default branch), `v*.*.*` (git release tags), and `sha-<commit>`.
@@ -278,7 +278,7 @@ request stats.
 
 ![FreeLLMAPI desktop app](../../../repo-assets/desktop.png)
 
-**[Download from Releases](https://github.com/tashfeenahmed/freellmapi/releases/latest)** — the macOS `.dmg` and the Windows `.exe` installer are built and attached to every release by the [`desktop-release`](../../../.github/workflows/desktop-release.yml) workflow. Or build it from this repo in a few minutes:
+**[Download from Releases](https://github.com/juniorhillory-creator/freellmapi/releases/latest)** — the macOS `.dmg` and the Windows `.exe` installer are built and attached to every release by the [`desktop-release`](../../../.github/workflows/desktop-release.yml) workflow. Or build it from this repo in a few minutes:
 
 **Mac downloads:** choose `arm64` for Apple Silicon or `x64` for Intel. Both require macOS 12 Monterey or later and include DMG and ZIP downloads.
 
@@ -393,7 +393,7 @@ the top.
 
 ```bash
 docker compose down -v            # -v also drops the freellmapi-data volume
-docker image rm ghcr.io/tashfeenahmed/freellmapi:latest
+docker image rm ghcr.io/juniorhillory-creator/freellmapi:latest
 rm -rf ~/freellmapi               # the one-liner's directory: .env + compose file
 ```
 
