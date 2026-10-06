@@ -24,7 +24,7 @@ curl -fsSL https://freellmapi.co/install.sh | bash
 
 不放心直接管道给 bash？[脚本在这里](https://freellmapi.co/install.sh)。重复执行是安全的：你的 `.env`（以及加密密钥）会被保留，容器会更新到 `:latest`。可以用 `FREELLMAPI_DIR`、`PORT` 或 `HOST_BIND` 环境变量覆盖默认值。
 
-在 Windows 上，最省事的方式是桌面版 **[Releases 里的 `.exe` 安装包](https://github.com/tashfeenahmed/freellmapi/releases/latest)**（见[下文](#桌面应用)）；上面的 Docker 步骤在 WSL 或任意 bash shell 里同样可用。
+在 Windows 上，最省事的方式是桌面版 **[Releases 里的 `.exe` 安装包](https://github.com/juniorhillory-creator/freellmapi/releases/latest)**（见[下文](#桌面应用)）；上面的 Docker 步骤在 WSL 或任意 bash shell 里同样可用。
 
 在 Android 上，参见实验性的 [Termux 安装指南](02-android-termux.md)。它使用 Node 内置的 SQLite 驱动，不需要 Android NDK。
 
@@ -40,7 +40,7 @@ curl -fsSL https://freellmapi.co/install.sh | bash
 
 *在 macOS / Linux 上（Bash）：*
 ```bash
-git clone https://github.com/tashfeenahmed/freellmapi.git
+git clone https://github.com/juniorhillory-creator/freellmapi.git
 cd freellmapi
 
 # 生成用于静态存储密钥的加密密钥
@@ -52,7 +52,7 @@ docker compose up -d
 
 *在 Windows 上（PowerShell）：*
 ```powershell
-git clone https://github.com/tashfeenahmed/freellmapi.git
+git clone https://github.com/juniorhillory-creator/freellmapi.git
 cd freellmapi
 
 $Bytes = New-Object Byte[] 32
@@ -87,7 +87,7 @@ docker compose up -d
 
 *在 macOS / Linux 上（Bash）：*
 ```bash
-git clone https://github.com/tashfeenahmed/freellmapi.git
+git clone https://github.com/juniorhillory-creator/freellmapi.git
 cd freellmapi
 npm install
 ENCRYPTION_KEY="$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')"
@@ -97,7 +97,7 @@ npm run dev
 
 *在 Windows 上（PowerShell）：*
 ```powershell
-git clone https://github.com/tashfeenahmed/freellmapi.git
+git clone https://github.com/juniorhillory-creator/freellmapi.git
 cd freellmapi
 npm install
 $ENCRYPTION_KEY = node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
@@ -188,7 +188,7 @@ node server/dist/index.js     # 服务和仪表盘都在 :3001 上提供
 FreeLLMAPI 发布一个生产镜像，里面包含 Express 服务和构建好的 React 仪表盘：
 
 ```bash
-docker pull ghcr.io/tashfeenahmed/freellmapi:latest   # 也可以固定到某个版本，例如 :v1.2.3
+docker pull ghcr.io/juniorhillory-creator/freellmapi:latest   # 也可以固定到某个版本，例如 :v1.2.3
 ```
 
 镜像是多架构的（`linux/amd64` 和 `linux/arm64`，所以树莓派上也能跑）。发布的标签有：`latest`（默认分支）、`v*.*.*`（git 发布标签）和 `sha-<commit>`。
@@ -227,7 +227,7 @@ FREEAPI_DB_BACKUP_INTERVAL_MS=300000
 
 ![FreeLLMAPI 桌面应用](../../../repo-assets/desktop.png)
 
-**[从 Releases 下载](https://github.com/tashfeenahmed/freellmapi/releases/latest)** —— macOS 的 `.dmg` 和 Windows 的 `.exe` 安装包由 [`desktop-release`](../../../.github/workflows/desktop-release.yml) 工作流在每个版本发布时构建并附带。你也可以花几分钟从本仓库自己构建：
+**[从 Releases 下载](https://github.com/juniorhillory-creator/freellmapi/releases/latest)** —— macOS 的 `.dmg` 和 Windows 的 `.exe` 安装包由 [`desktop-release`](../../../.github/workflows/desktop-release.yml) 工作流在每个版本发布时构建并附带。你也可以花几分钟从本仓库自己构建：
 
 **Mac 下载：** Apple Silicon 请选择 `arm64`，Intel 请选择 `x64`。两者都要求 macOS 12 Monterey 或更高版本，并提供 DMG 和 ZIP 下载。
 

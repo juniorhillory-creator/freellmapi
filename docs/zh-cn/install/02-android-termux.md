@@ -34,7 +34,7 @@ node --version
 然后克隆并启动 FreeLLMAPI：
 
 ```bash
-git clone https://github.com/tashfeenahmed/freellmapi.git
+git clone https://github.com/juniorhillory-creator/freellmapi.git
 cd freellmapi
 npm install --no-audit --no-fund
 npm run dev
