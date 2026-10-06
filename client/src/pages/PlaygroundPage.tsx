@@ -1,12 +1,14 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronRight, CircleAlert, FileText, X } from 'lucide-react'
+import { ChevronRight, CircleAlert, FileText, FolderGit2, X } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
+import { Button } from '@/components/ui/button'
 import { buildModelOptions } from '@/lib/model-groups'
 import type { Chain } from '@/components/chain-manager'
 import { Markdown } from '@/components/markdown'
 import { ArtifactHostContext } from '@/lib/artifact-host'
 import { ArtifactPanel, ARTIFACT_PANEL_TRANSITION_MS } from '@/components/playground/artifact-panel'
+import { ImportGithubProject } from '@/components/playground/ImportGithubProject'
 import { ARTIFACT_WIDTH_STORAGE_KEY, clampArtifactWidth, readArtifactWidth } from '@/lib/artifact-panel-size'
 import { extractArtifacts, type Artifact, type ArtifactKind } from '@/lib/artifacts'
 import { CopyButton } from '@/components/copy-button'
@@ -247,6 +249,7 @@ export default function PlaygroundPage() {
   const [conversationId, setConversationId] = useState<number | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => initialRailOpen(SIDEBAR_OPEN_KEY))
   const [settingsOpen, setSettingsOpen] = useState<boolean>(() => initialRailOpen(SETTINGS_OPEN_KEY))
+  const [githubImportOpen, setGithubImportOpen] = useState(false)
   // Mirrors of state the async save paths read AFTER their closure was made:
   // a stream that started before the row existed still has to save into it.
   const conversationIdRef = useRef<number | null>(null)
@@ -536,6 +539,37 @@ export default function PlaygroundPage() {
   const handleNewConversation = () => {
     flushCurrentConversation()
     resetConversationState()
+    inputRef.current?.focus()
+  }
+
+  const handleImportToCurrent = (newAttachments: Attachment[], promptText?: string) => {
+    if (newAttachments.length > 0) {
+      setAttachments(prev => [...prev, ...newAttachments])
+    }
+    if (promptText) {
+      setInput(prev => (prev ? `${prev}\n\n${promptText}` : promptText))
+    }
+    inputRef.current?.focus()
+  }
+
+  const handleImportToNewConversation = async (title: string, promptText: string, newAttachments: Attachment[]) => {
+    flushCurrentConversation()
+    resetConversationState()
+
+    try {
+      const created = await createConversation({ title })
+      adoptConversation(created.id, title)
+      refreshConversations()
+    } catch {
+      titleRef.current = title
+    }
+
+    if (newAttachments.length > 0) {
+      setAttachments(newAttachments)
+    }
+    if (promptText) {
+      setInput(promptText)
+    }
     inputRef.current?.focus()
   }
 
@@ -961,6 +995,7 @@ export default function PlaygroundPage() {
         open={sidebarOpen}
         onToggle={toggleSidebar}
         onNew={handleNewConversation}
+        onSyncGithub={() => setGithubImportOpen(true)}
         onSelect={handleSelectConversation}
         onRename={handleRenameConversation}
         onDelete={handleDeleteConversation}
@@ -972,11 +1007,24 @@ export default function PlaygroundPage() {
           <div className="mx-auto h-full w-full max-w-3xl space-y-4">
           {messages.length === 0 ? (
             <div className="flex items-center justify-center h-full text-center">
-              <div className="space-y-2 max-w-sm">
-                <p className="text-base font-medium">{t('playground.emptyTitle')}</p>
-                <p className="text-sm text-muted-foreground">
-                  {t('playground.emptyDescription', { model: activeModelLabel })}
-                </p>
+              <div className="space-y-4 max-w-sm">
+                <div className="space-y-2">
+                  <p className="text-base font-medium">{t('playground.emptyTitle')}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {t('playground.emptyDescription', { model: activeModelLabel })}
+                  </p>
+                </div>
+                <div className="pt-1 flex justify-center">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2 text-xs font-medium"
+                    onClick={() => setGithubImportOpen(true)}
+                  >
+                    <FolderGit2 className="size-3.5" />
+                    <span>Import GitHub Project</span>
+                  </Button>
+                </div>
               </div>
             </div>
           ) : (
@@ -1184,6 +1232,7 @@ export default function PlaygroundPage() {
             loading={loading}
             onSend={handleSend}
             onAttach={() => fileInputRef.current?.click()}
+            onGithubImport={() => setGithubImportOpen(true)}
             labels={{ attach: t('playground.attach'), send: t('playground.send'), sending: t('playground.sending') }}
             dictation={{
               available: transcriptionAvailable,
@@ -1230,6 +1279,13 @@ export default function PlaygroundPage() {
         onSamplingChange={updateSampling}
       />
       )}
+
+      <ImportGithubProject
+        open={githubImportOpen}
+        onOpenChange={setGithubImportOpen}
+        onImportToCurrent={handleImportToCurrent}
+        onImportToNewConversation={handleImportToNewConversation}
+      />
     </div>
   )
 }

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronsLeft, ChevronsRight, MoreHorizontal, Pencil, SquarePen, Trash2 } from 'lucide-react'
+import { ChevronsLeft, ChevronsRight, FolderGit2, MoreHorizontal, Pencil, SquarePen, Trash2 } from 'lucide-react'
 import { Button, buttonVariants } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -36,6 +36,8 @@ export function ConversationSidebar({
   open,
   onToggle,
   onNew,
+  onGithubImport,
+  onSyncGithub,
   onSelect,
   onRename,
   onDelete,
@@ -45,6 +47,8 @@ export function ConversationSidebar({
   open: boolean
   onToggle: () => void
   onNew: () => void
+  onGithubImport?: () => void
+  onSyncGithub?: () => void
   onSelect: (id: number) => void
   onRename: (id: number, title: string) => void
   onDelete: (id: number) => void
@@ -58,6 +62,8 @@ export function ConversationSidebar({
   // Re-render once a minute so "2m ago" doesn't quietly go stale while a long
   // answer streams.
   const [, setTick] = useState(0)
+
+  const handleSyncAction = onSyncGithub ?? onGithubImport
 
   useEffect(() => {
     const timer = window.setInterval(() => setTick(n => n + 1), 60_000)
@@ -111,6 +117,17 @@ export function ConversationSidebar({
         >
           <SquarePen className="size-4" />
         </Button>
+        {handleSyncAction && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={handleSyncAction}
+            aria-label="Sync from GitHub"
+            title="Sync from GitHub"
+          >
+            <FolderGit2 className="size-4" />
+          </Button>
+        )}
       </div>
 
       <div
@@ -140,6 +157,17 @@ export function ConversationSidebar({
             <SquarePen className="size-4" />
             <span className="truncate">{t('playgroundSessions.newChat')}</span>
           </Button>
+          {handleSyncAction && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full justify-center gap-2 text-muted-foreground hover:text-foreground"
+              onClick={handleSyncAction}
+            >
+              <FolderGit2 className="size-4" />
+              <span className="truncate">Sync from GitHub</span>
+            </Button>
+          )}
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
